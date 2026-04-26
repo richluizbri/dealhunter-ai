@@ -1,4 +1,4 @@
-// src/services/productService.js
+
 const { scrapeProducts }  = require("./scrapingService");
 const {
   findAllProducts,

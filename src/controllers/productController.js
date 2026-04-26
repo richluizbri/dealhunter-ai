@@ -1,4 +1,4 @@
-// src/controllers/productController.js
+
 const express = require("express");
 const router  = express.Router();
 const {
@@ -32,7 +32,6 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// POST /api/products/scrape
 router.post("/scrape", async (req, res) => {
   try {
     const io   = req.app.get("io");

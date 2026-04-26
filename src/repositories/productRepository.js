@@ -1,9 +1,6 @@
-// src/repositories/productRepository.js
 const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
-
-// ── PRODUCT ──────────────────────────────────────────────────────────────────
 
 // Retorna todos os produtos com o último registro de histórico
 async function findAllProducts() {
@@ -12,7 +9,7 @@ async function findAllProducts() {
     include: {
       history: {
         orderBy: { createdAt: "desc" },
-        take: 2, // ← era 1, agora 2 para calcular variação
+        take: 2,
       },
     },
   });
@@ -63,7 +60,6 @@ async function upsertProduct(data) {
   });
 }
 
-// ── PRICE HISTORY ─────────────────────────────────────────────────────────────
 
 // Registra snapshot de preço em BRL — banco armazena SOMENTE BRL
 async function createPriceHistory(productId, precoBRL) {

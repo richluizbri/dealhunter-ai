@@ -1,11 +1,11 @@
-// src/services/scrapingService.js
+
 const puppeteer = require("puppeteer");
 const { convertUSDtoBRL } = require("./currencyService");
 
 const TARGET_URL = "https://fake-ecommerce-five.vercel.app/";
 
 async function scrapeProducts(io) {
-  // Notifica que o browser está abrindo
+  // Notifica que o site está abrindo
   io?.emit("scraping:status", { step: "browser", message: "🌐 Abrindo navegador..." });
 
   const browser = await puppeteer.launch({
