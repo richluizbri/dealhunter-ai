@@ -1,4 +1,3 @@
-// src/server.js
 require("dotenv").config();
 const express       = require("express");
 const cors          = require("cors");
@@ -44,6 +43,6 @@ io.on("connection", (socket) => {
 });
 
 // Usa server.listen em vez de app.listen para o socket.io funcionar
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
 });
