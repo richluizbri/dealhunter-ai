@@ -56,18 +56,18 @@ async function scrapeProducts(io) {
   // Notifica que está convertendo os preços
   io?.emit("scraping:status", { step: "converting", message: "💱 Convertendo USD → BRL..." });
 
-  const productsWithBRL = await Promise.all(
-    validProducts.map(async (product) => {
-      const { valueBRL, rate } = await convertUSDtoBRL(product.priceUSD);
-      return {
-        ...product,
-        precoBRL:     valueBRL,
-        precoUSD:     product.priceUSD,
-        exchangeRate: rate,
-      };
-    })
-  );
-
+const productsWithBRL = [];
+for (const product of validProducts) {
+  const { valueBRL, rate } = await convertUSDtoBRL(product.priceUSD);
+  productsWithBRL.push({
+    ...product,
+    precoBRL:     valueBRL,
+    precoUSD:     product.priceUSD,
+    exchangeRate: rate,
+  });
+  // Aguarda 300ms entre cada conversão para não sobrecarregar a API
+  await new Promise(resolve => setTimeout(resolve, 300));
+}
   return productsWithBRL;
 }
 
