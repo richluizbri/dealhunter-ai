@@ -1,22 +1,38 @@
 // src/services/currencyService.js
 const axios = require("axios");
 
-const AWESOME_API_URL = "https://economia.awesomeapi.com.br/last/USD-BRL";
-
-// Cache da cotação para evitar múltiplas requisições
+// Cache da cotação
 let cachedRate = null;
 let cacheTime  = null;
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+const CACHE_TTL = 5 * 60 * 1000;
 
 async function getUSDtoBRLRate() {
-  // Usa o cache se ainda for válido
   if (cachedRate && cacheTime && (Date.now() - cacheTime) < CACHE_TTL) {
     return cachedRate;
   }
 
-  const response = await axios.get(AWESOME_API_URL);
-  cachedRate = parseFloat(response.data.USDBRL.bid);
-  cacheTime  = Date.now();
+  try {
+    // Tenta a AwesomeAPI primeiro
+    const response = await axios.get(
+      "https://economia.awesomeapi.com.br/last/USD-BRL",
+      { timeout: 5000 }
+    );
+    cachedRate = parseFloat(response.data.USDBRL.bid);
+  } catch {
+    try {
+      // Fallback: Open Exchange Rates (gratuita, sem auth)
+      const response = await axios.get(
+        "https://open.er-api.com/v6/latest/USD",
+        { timeout: 5000 }
+      );
+      cachedRate = response.data.rates.BRL;
+    } catch {
+      // Fallback final: cotação fixa
+      cachedRate = 5.10;
+    }
+  }
+
+  cacheTime = Date.now();
   return cachedRate;
 }
 
