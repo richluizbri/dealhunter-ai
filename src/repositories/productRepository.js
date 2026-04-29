@@ -1,6 +1,12 @@
 const { PrismaClient } = require("@prisma/client");
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL,
+    },
+  },
+});
 
 // Retorna todos os produtos com o último registro de histórico
 async function findAllProducts() {
@@ -34,7 +40,6 @@ async function upsertProduct(data) {
   });
 
   if (existing) {
-    // Atualiza todos os campos incluindo url e rating
     return prisma.product.update({
       where: { id: existing.id },
       data: {
@@ -47,7 +52,6 @@ async function upsertProduct(data) {
     });
   }
 
-  // Cria novo produto com todos os campos
   return prisma.product.create({
     data: {
       titulo:   data.titulo,
@@ -59,7 +63,6 @@ async function upsertProduct(data) {
     },
   });
 }
-
 
 // Registra snapshot de preço em BRL — banco armazena SOMENTE BRL
 async function createPriceHistory(productId, precoBRL) {
