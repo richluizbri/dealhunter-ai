@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "description": "",
   "main": "src/server.js",
-  "scripts": {
-    "start": "node src/server.js",
+"scripts": {
+    "start": "npx prisma generate && node src/server.js",
     "dev": "node src/server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "postinstall": "prisma generate"
-  },
+    "postinstall": "npx prisma generate"
+},
   "keywords": [],
   "author": "",
   "license": "ISC",
