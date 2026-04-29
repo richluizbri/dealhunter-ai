@@ -1,4 +1,5 @@
 const { execSync } = require("child_process");
+try { execSync("node node_modules/prisma/build/index.js generate", { stdio: "inherit" }); } catch(e) { console.log("Prisma generate skipped:", e.message); }
 try { execSync("node_modules/.bin/prisma generate", { stdio: "inherit" }); } catch(e) {}
 
 require("dotenv").config();
