@@ -1,4 +1,4 @@
-
+// src/controllers/productController.js
 const express = require("express");
 const router  = express.Router();
 const {
@@ -7,7 +7,7 @@ const {
   getProductById,
 } = require("../services/productService");
 const { analyzePriceHistory, analyzeRating } = require("../services/aiService");
-const { findProductById, findHistoryByProductId } = require("../repositories/productRepository");
+const { findProductById, findHistoryByProductId, deleteProduct } = require("../repositories/productRepository");
 
 // GET /api/products
 router.get("/", async (req, res) => {
@@ -23,7 +23,9 @@ router.get("/", async (req, res) => {
 // GET /api/products/:id
 router.get("/:id", async (req, res) => {
   try {
-    const data = await getProductById(req.params.id);
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "ID inválido." });
+    const data = await getProductById(id);
     return res.status(200).json(data);
   } catch (error) {
     console.error("[GET /products/:id]", error.message);
@@ -32,6 +34,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+// POST /api/products/scrape
 router.post("/scrape", async (req, res) => {
   try {
     const io   = req.app.get("io");
@@ -46,12 +49,11 @@ router.post("/scrape", async (req, res) => {
 // GET /api/products/:id/analyze
 router.get("/:id/analyze", async (req, res) => {
   try {
-    const id      = Number(req.params.id);
-    const product = await findProductById(id);
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "ID inválido." });
 
-    if (!product) {
-      return res.status(404).json({ error: "Produto não encontrado." });
-    }
+    const product = await findProductById(id);
+    if (!product) return res.status(404).json({ error: "Produto não encontrado." });
 
     const history = await findHistoryByProductId(id);
 
@@ -62,9 +64,23 @@ router.get("/:id/analyze", async (req, res) => {
 
     return res.status(200).json({ priceAnalysis, ratingAnalysis });
   } catch (error) {
-    // Log detalhado do erro
-    console.error("[GET /products/:id/analyze] ERRO COMPLETO:", error);
+    console.error("[GET /products/:id/analyze]", error.message);
     return res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/products/:id
+router.delete("/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "ID inválido." });
+
+    await deleteProduct(id);
+    return res.status(200).json({ message: "Produto removido com sucesso." });
+  } catch (error) {
+    console.error("[DELETE /products/:id]", error.message);
+    const status = error.message.includes("não encontrado") ? 404 : 500;
+    return res.status(status).json({ error: error.message });
   }
 });
 

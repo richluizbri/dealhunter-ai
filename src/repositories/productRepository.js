@@ -1,6 +1,9 @@
+// src/repositories/productRepository.js
 const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
+
+// ── PRODUCT ──────────────────────────────────────────────────────────────────
 
 // Retorna todos os produtos com o último registro de histórico
 async function findAllProducts() {
@@ -34,29 +37,35 @@ async function upsertProduct(data) {
   });
 
   if (existing) {
+    // Atualiza todos os campos incluindo exchangeRate
     return prisma.product.update({
       where: { id: existing.id },
       data: {
-        precoUSD: data.precoUSD,
-        precoBRL: data.precoBRL,
-        imagem:   data.imagem,
-        url:      data.url,
-        rating:   data.rating,
+        precoUSD:     data.precoUSD,
+        precoBRL:     data.precoBRL,
+        imagem:       data.imagem,
+        url:          data.url,
+        rating:       data.rating,
+        exchangeRate: data.exchangeRate,
       },
     });
   }
 
+  // Cria novo produto com todos os campos
   return prisma.product.create({
     data: {
-      titulo:   data.titulo,
-      precoUSD: data.precoUSD,
-      precoBRL: data.precoBRL,
-      imagem:   data.imagem,
-      url:      data.url,
-      rating:   data.rating,
+      titulo:       data.titulo,
+      precoUSD:     data.precoUSD,
+      precoBRL:     data.precoBRL,
+      imagem:       data.imagem,
+      url:          data.url,
+      rating:       data.rating,
+      exchangeRate: data.exchangeRate,
     },
   });
 }
+
+// ── PRICE HISTORY ─────────────────────────────────────────────────────────────
 
 // Registra snapshot de preço em BRL — banco armazena SOMENTE BRL
 async function createPriceHistory(productId, precoBRL) {
@@ -76,10 +85,21 @@ async function findHistoryByProductId(productId) {
   });
 }
 
+// Remove um produto e seu histórico do banco
+async function deleteProduct(id) {
+  await prisma.priceHistory.deleteMany({
+    where: { productId: id },
+  });
+  return prisma.product.delete({
+    where: { id },
+  });
+}
+
 module.exports = {
   findAllProducts,
   findProductById,
   upsertProduct,
   createPriceHistory,
   findHistoryByProductId,
+  deleteProduct,
 };
