@@ -3,6 +3,7 @@ const express = require("express");
 const router  = express.Router();
 const {
   runScraping,
+  addProductByUrl,
   getAllProducts,
   getProductById,
 } = require("../services/productService");
@@ -44,6 +45,37 @@ router.post("/scrape", async (req, res) => {
     return res.status(200).json(data);
   } catch (error) {
     console.error("[POST /products/scrape]", error.message);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// 4.2 — POST /api/products — Adiciona um produto manualmente por URL
+// Recebe { "url": "https://..." } no body e o Puppeteer extrai os dados
+router.post("/", async (req, res) => {
+  try {
+    const { url } = req.body;
+
+    // Valida se a URL foi enviada
+    if (!url || typeof url !== "string") {
+      return res.status(400).json({ error: "Informe uma URL válida no body: { url: '...' }" });
+    }
+
+    // Valida se é uma URL válida
+    try {
+      new URL(url);
+    } catch {
+      return res.status(400).json({ error: "URL inválida. Forneça uma URL completa com http:// ou https://" });
+    }
+
+    const product = await addProductByUrl(url);
+
+    // 201 Created — indica que um novo recurso foi criado
+    return res.status(201).json({
+      message: "Produto adicionado com sucesso!",
+      product,
+    });
+  } catch (error) {
+    console.error("[POST /products]", error.message);
     return res.status(500).json({ error: error.message });
   }
 });
