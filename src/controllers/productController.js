@@ -12,7 +12,9 @@ const { findProductById, findHistoryByProductId, deleteProduct } = require("../r
 // GET /api/products
 router.get("/", async (req, res) => {
   try {
-    const data = await getAllProducts();
+    const page  = parseInt(req.query.page)  || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const data  = await getAllProducts({ page, limit });
     return res.status(200).json(data);
   } catch (error) {
     console.error("[GET /products]", error.message);

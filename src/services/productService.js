@@ -1,4 +1,4 @@
-
+// src/services/productService.js
 const { scrapeProducts }  = require("./scrapingService");
 const {
   findAllProducts,
@@ -8,9 +8,7 @@ const {
 } = require("../repositories/productRepository");
 
 // Dispara o scraping completo e persiste tudo no banco
-// io = instância do socket.io para emitir eventos em tempo real
 async function runScraping(io) {
-  // Notifica o frontend que o scraping começou
   io?.emit("scraping:status", { step: "start", message: "🔍 Iniciando coleta de dados..." });
 
   const scrapedProducts = await scrapeProducts(io);
@@ -20,18 +18,18 @@ async function runScraping(io) {
     throw new Error("Nenhum produto encontrado no scraping.");
   }
 
-  // Notifica que está salvando no banco
   io?.emit("scraping:status", { step: "saving", message: "💾 Salvando no banco de dados..." });
 
   const results = await Promise.all(
     scrapedProducts.map(async (product) => {
       const saved = await upsertProduct({
-        titulo:   product.title,
-        precoUSD: product.precoUSD,
-        precoBRL: product.precoBRL,
-        imagem:   product.image,
-        url:      product.url,
-        rating:   product.rating,
+        titulo:       product.title,
+        precoUSD:     product.precoUSD,
+        precoBRL:     product.precoBRL,
+        imagem:       product.image,
+        url:          product.url,
+        rating:       product.rating,
+        exchangeRate: product.exchangeRate,
       });
 
       await createPriceHistory(saved.id, product.precoBRL);
@@ -39,30 +37,30 @@ async function runScraping(io) {
     })
   );
 
-  // Notifica que finalizou com sucesso
   io?.emit("scraping:status", {
-    step: "done",
+    step:    "done",
     message: `✅ ${results.length} produto(s) coletado(s) com sucesso!`,
   });
 
   return {
-    message: `${results.length} produto(s) processado(s) com sucesso.`,
+    message:  `${results.length} produto(s) processado(s) com sucesso.`,
     products: results,
   };
 }
 
-// Retorna todos os produtos para a listagem
-async function getAllProducts() {
-  const products = await findAllProducts();
+// Retorna todos os produtos com paginação
+async function getAllProducts({ page = 1, limit = 20 } = {}) {
+  const data = await findAllProducts({ page, limit });
 
-  if (!products.length) {
-    return { message: "Nenhum produto cadastrado ainda.", products: [] };
-  }
-
-  return { products };
+  return {
+    products:    data.products,
+    total:       data.total,
+    totalPages:  data.totalPages,
+    currentPage: data.currentPage,
+  };
 }
 
-// Retorna um produto com histórico completo para a tela de detalhes
+// Retorna um produto com histórico completo
 async function getProductById(id) {
   const product = await findProductById(Number(id));
 

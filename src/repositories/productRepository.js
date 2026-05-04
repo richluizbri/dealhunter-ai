@@ -3,12 +3,15 @@ const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
 
-// ── PRODUCT ──────────────────────────────────────────────────────────────────
+// Retorna produtos paginados com o último registro de histórico
+async function findAllProducts({ page = 1, limit = 20 } = {}) {
+  const skip  = (page - 1) * limit;
+  const total = await prisma.product.count();
 
-// Retorna todos os produtos com o último registro de histórico
-async function findAllProducts() {
-  return prisma.product.findMany({
-    orderBy: { createdAt: "desc" },
+  const products = await prisma.product.findMany({
+    skip,
+    take:      limit,
+    orderBy:   { createdAt: "desc" },
     include: {
       history: {
         orderBy: { createdAt: "desc" },
@@ -16,6 +19,13 @@ async function findAllProducts() {
       },
     },
   });
+
+  return {
+    products,
+    total,
+    totalPages:  Math.ceil(total / limit),
+    currentPage: page,
+  };
 }
 
 // Retorna um produto com histórico completo para o gráfico
@@ -30,14 +40,13 @@ async function findProductById(id) {
   });
 }
 
-// Cria ou atualiza o produto pelo título — evita duplicatas
+// Cria ou atualiza o produto pelo título
 async function upsertProduct(data) {
   const existing = await prisma.product.findFirst({
     where: { titulo: data.titulo },
   });
 
   if (existing) {
-    // Atualiza todos os campos incluindo exchangeRate
     return prisma.product.update({
       where: { id: existing.id },
       data: {
@@ -51,7 +60,6 @@ async function upsertProduct(data) {
     });
   }
 
-  // Cria novo produto com todos os campos
   return prisma.product.create({
     data: {
       titulo:       data.titulo,
@@ -65,9 +73,7 @@ async function upsertProduct(data) {
   });
 }
 
-// ── PRICE HISTORY ─────────────────────────────────────────────────────────────
-
-// Registra snapshot de preço em BRL — banco armazena SOMENTE BRL
+// Registra snapshot de preço em BRL
 async function createPriceHistory(productId, precoBRL) {
   return prisma.priceHistory.create({
     data: {
@@ -85,7 +91,7 @@ async function findHistoryByProductId(productId) {
   });
 }
 
-// Remove um produto e seu histórico do banco
+// Remove um produto e seu histórico
 async function deleteProduct(id) {
   await prisma.priceHistory.deleteMany({
     where: { productId: id },
