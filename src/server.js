@@ -3,6 +3,7 @@ try { execSync("node node_modules/prisma/build/index.js generate", { stdio: "inh
 try { execSync("node_modules/.bin/prisma generate", { stdio: "inherit" }); } catch(e) {}
 
 require("dotenv").config();
+require("./services/scheduler"); //cron
 const express       = require("express");
 const cors          = require("cors");
 const http          = require("http");

@@ -8,16 +8,17 @@ datasource db {
 }
 
 model Product {
-  id        Int      @id @default(autoincrement())
-  titulo    String   @db.VarChar(500)
-  precoUSD  Float
-  precoBRL  Float
-  imagem    String?  @db.VarChar(1000)
-  url       String?  @db.VarChar(1000)
-  rating    String?  @db.VarChar(50)
-  createdAt DateTime @default(now())
+  id           Int      @id @default(autoincrement())
+  titulo       String   @db.VarChar(500)
+  precoUSD     Float
+  precoBRL     Float
+  exchangeRate Float?   // ← adiciona essa linha
+  imagem       String?  @db.VarChar(1000)
+  url          String?  @db.VarChar(1000)
+  rating       String?  @db.VarChar(50)
+  createdAt    DateTime @default(now())
 
-  history   PriceHistory[]
+  history      PriceHistory[]
 }
 
 model PriceHistory {
