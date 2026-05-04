@@ -1,16 +1,34 @@
-
+// src/services/aiService.js
 const { GoogleGenAI } = require("@google/genai");
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+// 2.10 — Troca para gemma-3-27b-it para evitar erro 429
 async function generateJSON(prompt) {
-  const response = await ai.models.generateContent({
-  model: "gemini-2.5-flash",
-    contents: prompt,
-  });
-  const text  = response.text.trim();
-  const clean = text.replace(/```json|```/g, "").trim();
-  return JSON.parse(clean);
+  try {
+    const response = await ai.models.generateContent({
+      model:    "gemma-3-27b-it",
+      contents: prompt,
+    });
+    const text  = response.text.trim();
+    const clean = text.replace(/```json|```/g, "").trim();
+    return JSON.parse(clean);
+  } catch (error) {
+    // 3.1 — Captura erros da API e loga apenas no servidor
+    console.error("Erro na API de IA:", error?.message || error);
+
+    // Retorna mensagem amigável para erros de cota ou permissão
+    if (
+      error?.status === 403 ||
+      error?.status === 429 ||
+      error?.message?.includes("403") ||
+      error?.message?.includes("429")
+    ) {
+      throw new Error("IA indisponível no momento. Tente novamente mais tarde.");
+    }
+
+    throw new Error("Não foi possível gerar análise agora.");
+  }
 }
 
 // Analisa a variação de preços e retorna um resumo inteligente
@@ -53,6 +71,7 @@ Responda APENAS em JSON puro sem markdown:
 }
 
 // Analisa o sentimento do rating do produto
+// 3.2 — Aceita reviewTexts opcionalmente para análise mais rica
 async function analyzeRating(product) {
   if (!product.rating) {
     return {
@@ -62,11 +81,16 @@ async function analyzeRating(product) {
     };
   }
 
+  // 3.2 — Monta bloco de reviews se disponível
+  const reviewsBlock = product.reviewTexts && product.reviewTexts.length > 0
+    ? `\nAvaliações dos usuários:\n${product.reviewTexts.map((r, i) => `${i + 1}. "${r}"`).join("\n")}`
+    : "";
+
   const prompt = `
 Analise a avaliação deste produto de e-commerce.
 
 Produto: ${product.titulo}
-Avaliação: ${product.rating}
+Avaliação: ${product.rating}${reviewsBlock}
 
 Responda APENAS em JSON puro sem markdown:
 {
