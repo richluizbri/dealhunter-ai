@@ -3,31 +3,51 @@ const { GoogleGenAI } = require("@google/genai");
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Helper interno para chamar a IA com tratamento de erro seguro
+// Modelos em ordem de preferência — tenta o próximo se o atual falhar
+const MODELS = [
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-8b",
+];
+
+// Helper interno — tenta cada modelo até um funcionar
 async function generateJSON(prompt) {
-  try {
-    const response = await ai.models.generateContent({
-      model:    "gemma-3-27b-it",
-      contents: prompt,
-    });
-    const text  = response.text.trim();
-    const clean = text.replace(/```json|```/g, "").trim();
-    return JSON.parse(clean);
-  } catch (error) {
-    console.error("Erro na API de IA:", error?.message || error);
-    if (
-      error?.status === 403 ||
-      error?.status === 429 ||
-      error?.message?.includes("403") ||
-      error?.message?.includes("429")
-    ) {
-      throw new Error("IA indisponível no momento. Tente novamente mais tarde.");
+  let lastError;
+
+  for (const model of MODELS) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+      });
+
+      const text  = response.text.trim();
+      const clean = text.replace(/```json|```/g, "").trim();
+      return JSON.parse(clean);
+
+    } catch (error) {
+      console.error(`[aiService] Falha com modelo ${model}:`, error?.message);
+      lastError = error;
+
+      // Se for erro de modelo não encontrado ou cota, tenta o próximo
+      const isTryNextError =
+        error?.status === 403 ||
+        error?.status === 429 ||
+        error?.message?.includes("403") ||
+        error?.message?.includes("429") ||
+        error?.message?.includes("quota") ||
+        error?.message?.includes("not found") ||
+        error?.message?.includes("NOT_FOUND");
+
+      if (!isTryNextError) break;
     }
-    throw new Error("Não foi possível gerar análise agora.");
   }
+
+  console.error("[aiService] Todos os modelos falharam:", lastError?.message);
+  throw new Error("IA indisponível no momento. Tente novamente mais tarde.");
 }
 
-// Analisa tendência de preços — nome alinhado com o controller
+// Analisa tendência de preços
 async function analyzePriceTrend(titulo, history) {
   if (!history || history.length < 2) {
     return {
@@ -66,7 +86,7 @@ Responda APENAS em JSON puro sem markdown:
   return generateJSON(prompt);
 }
 
-// Analisa sentimento do rating — recebe titulo, rating e reviewTexts separados
+// Analisa sentimento do rating e reviews
 async function analyzeRating(titulo, rating, reviewTexts = []) {
   if (!rating) {
     return {
