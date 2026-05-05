@@ -1,29 +1,22 @@
 // src/repositories/productRepository.js
-const { PrismaClient } = require("@prisma/client");
-
-const prisma = new PrismaClient();
+const prisma = require("../lib/prisma");
 
 // Retorna produtos paginados com histórico e reviews
 async function findAllProducts({ page = 1, limit = 20 } = {}) {
-  const skip  = (page - 1) * limit;
-  const total = await prisma.product.count();
+  const skip = (page - 1) * limit;
 
-  const products = await prisma.product.findMany({
-    skip,
-    take:    limit,
-    orderBy: { createdAt: "desc" },
-    include: {
-      history: {
-        orderBy: { createdAt: "desc" },
-        take: 2,
+  const [total, products] = await Promise.all([
+    prisma.product.count(),
+    prisma.product.findMany({
+      skip,
+      take:    limit,
+      orderBy: { createdAt: "desc" },
+      include: {
+        history: { orderBy: { createdAt: "desc" }, take: 2 },
+        reviews: { orderBy: { createdAt: "desc" }, take: 5 },
       },
-      // Inclui as reviews mais recentes
-      reviews: {
-        orderBy: { createdAt: "desc" },
-        take: 5,
-      },
-    },
-  });
+    }),
+  ]);
 
   return {
     products,
@@ -38,13 +31,8 @@ async function findProductById(id) {
   return prisma.product.findUnique({
     where: { id },
     include: {
-      history: {
-        orderBy: { createdAt: "asc" },
-      },
-      // Inclui todas as reviews do produto
-      reviews: {
-        orderBy: { createdAt: "desc" },
-      },
+      history: { orderBy: { createdAt: "asc" } },
+      reviews: { orderBy: { createdAt: "desc" } },
     },
   });
 }
@@ -82,32 +70,21 @@ async function upsertProduct(data) {
   });
 }
 
-// Salva os textos das reviews — apaga as antigas e insere as novas
-// Assim evitamos duplicatas a cada scraping
+// Salva textos das reviews — apaga antigas e insere novas
 async function upsertReviews(productId, reviewTexts) {
   if (!reviewTexts || reviewTexts.length === 0) return;
 
-  // Remove reviews antigas do produto
-  await prisma.review.deleteMany({
-    where: { productId },
-  });
+  await prisma.review.deleteMany({ where: { productId } });
 
-  // Insere as novas reviews
   await prisma.review.createMany({
-    data: reviewTexts.map((texto) => ({
-      productId,
-      texto,
-    })),
+    data: reviewTexts.map((texto) => ({ productId, texto })),
   });
 }
 
 // Registra snapshot de preço em BRL
 async function createPriceHistory(productId, precoBRL) {
   return prisma.priceHistory.create({
-    data: {
-      productId,
-      preco: precoBRL,
-    },
+    data: { productId, preco: precoBRL },
   });
 }
 
@@ -119,7 +96,7 @@ async function findHistoryByProductId(productId) {
   });
 }
 
-// Remove um produto e seu histórico e reviews
+// Remove produto, histórico e reviews
 async function deleteProduct(id) {
   await prisma.review.deleteMany({ where: { productId: id } });
   await prisma.priceHistory.deleteMany({ where: { productId: id } });

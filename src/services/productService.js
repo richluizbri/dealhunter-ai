@@ -1,6 +1,6 @@
 // src/services/productService.js
 const { scrapeProducts }  = require("./scrapingService");
-const puppeteer = require("puppeteer");
+const puppeteer           = require("puppeteer");
 const { convertUSDtoBRL } = require("./currencyService");
 const {
   findAllProducts,
@@ -11,21 +11,15 @@ const {
 } = require("../repositories/productRepository");
 
 // Dispara o scraping completo e persiste tudo no banco
-async function runScraping(io) {
-  io?.emit("scraping:status", { step: "start", message: "🔍 Iniciando coleta de dados..." });
-
-  const scrapedProducts = await scrapeProducts(io);
+async function runScraping() {
+  const scrapedProducts = await scrapeProducts();
 
   if (!scrapedProducts.length) {
-    io?.emit("scraping:status", { step: "error", message: "❌ Nenhum produto encontrado." });
     throw new Error("Nenhum produto encontrado no scraping.");
   }
 
-  io?.emit("scraping:status", { step: "saving", message: "💾 Salvando no banco de dados..." });
-
   const results = await Promise.all(
     scrapedProducts.map(async (product) => {
-      // Salva ou atualiza o produto
       const saved = await upsertProduct({
         titulo:       product.title,
         precoUSD:     product.precoUSD,
@@ -36,7 +30,6 @@ async function runScraping(io) {
         exchangeRate: product.exchangeRate,
       });
 
-      // Salva os textos das reviews no banco
       if (product.reviewTexts && product.reviewTexts.length > 0) {
         await upsertReviews(saved.id, product.reviewTexts);
       }
@@ -46,18 +39,13 @@ async function runScraping(io) {
     })
   );
 
-  io?.emit("scraping:status", {
-    step:    "done",
-    message: `✅ ${results.length} produto(s) coletado(s) com sucesso!`,
-  });
-
   return {
     message:  `${results.length} produto(s) processado(s) com sucesso.`,
     products: results,
   };
 }
 
-// 4.2 — Adiciona um produto manualmente a partir de uma URL específica
+// 4.2 — Adiciona produto manualmente por URL
 async function addProductByUrl(url) {
   const browser = await puppeteer.launch({
     headless: true,
@@ -87,8 +75,6 @@ async function addProductByUrl(url) {
       return { title, priceUSD, image, rating, reviewTexts };
     });
 
-    await browser.close();
-
     if (!productData.title || productData.priceUSD <= 0) {
       throw new Error("Não foi possível extrair os dados do produto nesta URL.");
     }
@@ -105,17 +91,15 @@ async function addProductByUrl(url) {
       exchangeRate: rate,
     });
 
-    // Salva reviews se encontradas
     if (productData.reviewTexts && productData.reviewTexts.length > 0) {
       await upsertReviews(saved.id, productData.reviewTexts);
     }
 
     await createPriceHistory(saved.id, valueBRL);
-
     return saved;
-  } catch (error) {
+
+  } finally {
     await browser.close();
-    throw error;
   }
 }
 
