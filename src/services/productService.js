@@ -1,149 +1,126 @@
-// src/services/productService.js
-const { scrapeProducts }  = require("./scrapingService");
-const puppeteer = require("puppeteer");
-const { convertUSDtoBRL } = require("./currencyService");
+
+// src/controllers/productController.js
+const express = require("express");
+const router  = express.Router();
 const {
-  findAllProducts,
+  runScraping,
+  addProductByUrl,
+  getAllProducts,
+  getProductById,
+} = require("../services/productService");
+
+// [CORREÇÃO] analyzePriceHistory → analyzePriceTrend
+// Nome corrigido para bater com o export real do aiService.js
+const { analyzePriceTrend, analyzeRating } = require("../services/aiService");
+const {
   findProductById,
-  upsertProduct,
-  createPriceHistory,
+  findHistoryByProductId,
+  deleteProduct,
 } = require("../repositories/productRepository");
 
-// Dispara o scraping completo e persiste tudo no banco
-async function runScraping(io) {
-  io?.emit("scraping:status", { step: "start", message: "🔍 Iniciando coleta de dados..." });
-
-  const scrapedProducts = await scrapeProducts(io);
-
-  if (!scrapedProducts.length) {
-    io?.emit("scraping:status", { step: "error", message: "❌ Nenhum produto encontrado." });
-    throw new Error("Nenhum produto encontrado no scraping.");
-  }
-
-  io?.emit("scraping:status", { step: "saving", message: "💾 Salvando no banco de dados..." });
-
-  const results = await Promise.all(
-    scrapedProducts.map(async (product) => {
-      const saved = await upsertProduct({
-        titulo:       product.title,
-        precoUSD:     product.precoUSD,
-        precoBRL:     product.precoBRL,
-        imagem:       product.image,
-        url:          product.url,
-        rating:       product.rating,
-        exchangeRate: product.exchangeRate,
-      });
-
-      await createPriceHistory(saved.id, product.precoBRL);
-      return saved;
-    })
-  );
-
-  io?.emit("scraping:status", {
-    step:    "done",
-    message: `✅ ${results.length} produto(s) coletado(s) com sucesso!`,
-  });
-
-  return {
-    message:  `${results.length} produto(s) processado(s) com sucesso.`,
-    products: results,
-  };
-}
-
-// 4.2 — Adiciona um produto manualmente a partir de uma URL específica
-// O Puppeteer acessa aquela página e extrai os dados do produto
-async function addProductByUrl(url) {
-  const browser = await puppeteer.launch({
-    headless: true,
-    // Mesmos args do scrapingService para funcionar no Docker
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-  });
-
+// ── GET /api/products ────────────────────────────────────────────────────────
+router.get("/", async (req, res) => {
   try {
-    const page = await browser.newPage();
+    const page  = parseInt(req.query.page)  || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const data  = await getAllProducts({ page, limit });
+    return res.status(200).json(data);
+  } catch (error) {
+    console.error("[GET /products]", error.message);
+    return res.status(500).json({ error: "Erro ao buscar produtos." });
+  }
+});
 
-    // Acessa a URL específica do produto
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
+// ── GET /api/products/:id ────────────────────────────────────────────────────
+router.get("/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "ID inválido." });
+    const data = await getProductById(id);
+    return res.status(200).json(data);
+  } catch (error) {
+    console.error("[GET /products/:id]", error.message);
+    const status = error.message.includes("não encontrado") ? 404 : 500;
+    return res.status(status).json({ error: error.message });
+  }
+});
 
-    // Extrai os dados da página usando os mesmos seletores do scrapingService
-    const productData = await page.evaluate(() => {
-      const title =
-        document.querySelector("[class*='title'], h1")?.innerText?.trim() || "";
+// ── POST /api/products/scrape ────────────────────────────────────────────────
+router.post("/scrape", async (req, res) => {
+  try {
+    // [CORREÇÃO] Removido io como argumento — runScraping() usa getIO() internamente
+    const data = await runScraping();
+    return res.status(200).json(data);
+  } catch (error) {
+    console.error("[POST /products/scrape]", error.message);
+    return res.status(500).json({ error: "Erro ao executar scraping." });
+  }
+});
 
-      const priceRaw =
-        document.querySelector("[class*='price']")?.innerText?.trim() || "0";
-      const priceUSD = parseFloat(priceRaw.replace(/[^0-9.]/g, "")) || 0;
+// ── POST /api/products — Adiciona produto manualmente por URL ────────────────
+router.post("/", async (req, res) => {
+  try {
+    const { url } = req.body;
 
-      const image = document.querySelector("img")?.src || "";
-
-      // Rating — valor + contagem
-      const ratingValue = document.querySelector(".rating-value")?.innerText?.trim() || "";
-      const ratingCount = document.querySelector(".rating-count")?.innerText?.trim() || "";
-      const rating = ratingValue ? `${ratingValue} ${ratingCount}`.trim() : null;
-
-      // Textos das reviews se disponíveis
-      const reviewElements = document.querySelectorAll(".review-text, [class*='review']");
-      const reviewTexts = Array.from(reviewElements)
-        .map((el) => el.innerText?.trim())
-        .filter(Boolean);
-
-      return { title, priceUSD, image, rating, reviewTexts };
-    });
-
-    await browser.close();
-
-    // Valida se os dados mínimos foram extraídos
-    if (!productData.title || productData.priceUSD <= 0) {
-      throw new Error("Não foi possível extrair os dados do produto nesta URL.");
+    if (!url || typeof url !== "string") {
+      return res.status(400).json({ error: "Informe uma URL válida no body: { url: '...' }" });
     }
 
-    // Converte o preço para BRL
-    const { valueBRL, rate } = await convertUSDtoBRL(productData.priceUSD);
+    try { new URL(url); } catch {
+      return res.status(400).json({ error: "URL inválida. Forneça uma URL completa com http:// ou https://" });
+    }
 
-    // Salva o produto no banco (upsert = cria ou atualiza se já existir)
-    const saved = await upsertProduct({
-      titulo:       productData.title,
-      precoUSD:     productData.priceUSD,
-      precoBRL:     valueBRL,
-      imagem:       productData.image,
-      url:          url,
-      rating:       productData.rating,
-      exchangeRate: rate,
-    });
-
-    // Registra o preço no histórico
-    await createPriceHistory(saved.id, valueBRL);
-
-    return saved;
+    const product = await addProductByUrl(url);
+    return res.status(201).json({ message: "Produto adicionado com sucesso!", product });
   } catch (error) {
-    // Garante que o browser feche mesmo com erro
-    await browser.close();
-    throw error;
+    console.error("[POST /products]", error.message);
+    return res.status(500).json({ error: "Erro ao adicionar produto." });
   }
-}
+});
 
-// Retorna todos os produtos com paginação
-async function getAllProducts({ page = 1, limit = 20 } = {}) {
-  const data = await findAllProducts({ page, limit });
+// ── GET /api/products/:id/analyze ────────────────────────────────────────────
+router.get("/:id/analyze", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "ID inválido." });
 
-  return {
-    products:    data.products,
-    total:       data.total,
-    totalPages:  data.totalPages,
-    currentPage: data.currentPage,
-  };
-}
+    const product = await findProductById(id);
+    if (!product) return res.status(404).json({ error: "Produto não encontrado." });
 
-// Retorna um produto com histórico completo
-async function getProductById(id) {
-  const product = await findProductById(Number(id));
+    const history = await findHistoryByProductId(id);
 
-  if (!product) {
-    throw new Error(`Produto com id ${id} não encontrado.`);
+    // [CORREÇÃO 3.1] Mensagens de erro da IA nunca chegam ao frontend —
+    // o _safeCall() do aiService já retorna fallback amigável em caso de falha.
+    //
+    // [CORREÇÃO 3.2] analyzeRating agora recebe o rating do produto E o
+    // array reviewTexts salvo no banco (campo adicionado via scraping).
+    // analyzePriceTrend recebe o titulo e o histórico completo de preços.
+    const [priceAnalysis, ratingAnalysis] = await Promise.all([
+      analyzePriceTrend(product.titulo, history),
+      // [CORREÇÃO] era analyzeRating(product) — não passava rating nem reviewTexts.
+      // Agora passa os dois campos corretamente.
+      analyzeRating(product.titulo, product.rating, product.reviewTexts ?? []);
+    ]);
+
+    return res.status(200).json({ priceAnalysis, ratingAnalysis });
+  } catch (error) {
+    console.error("[GET /products/:id/analyze]", error.message);
+    return res.status(500).json({ error: "Erro ao analisar produto." });
   }
+});
 
-  return { product };
-}
+// ── DELETE /api/products/:id ──────────────────────────────────────────────────
+router.delete("/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "ID inválido." });
+    await deleteProduct(id);
+    return res.status(200).json({ message: "Produto removido com sucesso." });
+  } catch (error) {
+    console.error("[DELETE /products/:id]", error.message);
+    const status = error.message.includes("não encontrado") ? 404 : 500;
+    return res.status(status).json({ error: error.message });
+  }
+});
 
-module.exports = { runScraping, addProductByUrl, getAllProducts, getProductById };
+module.exports = router;
