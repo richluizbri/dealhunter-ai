@@ -1,5 +1,3 @@
-// prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,12 +9,7 @@ datasource db {
 
 model Product {
   id           Int      @id @default(autoincrement())
-
-  // [CORREÇÃO] @unique adicionado para garantir que não existam dois
-  // produtos com o mesmo título no banco — e para habilitar o upsert
-  // nativo do Prisma no repository (where: { titulo: ... }).
   titulo       String   @unique @db.VarChar(500)
-
   precoUSD     Float
   precoBRL     Float
   exchangeRate Float?
@@ -29,10 +22,10 @@ model Product {
 }
 
 model PriceHistory {
-  id         Int      @id @default(autoincrement())
-  productId  Int
-  preco      Float
-  createdAt  DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  productId Int
+  preco     Float
+  createdAt DateTime @default(now())
 
-  product    Product  @relation(fields: [productId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
 }
