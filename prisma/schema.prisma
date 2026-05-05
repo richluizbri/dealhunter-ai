@@ -1,3 +1,5 @@
+// prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,10 +11,15 @@ datasource db {
 
 model Product {
   id           Int      @id @default(autoincrement())
-  titulo       String   @db.VarChar(500)
+
+  // [CORREÇÃO] @unique adicionado para garantir que não existam dois
+  // produtos com o mesmo título no banco — e para habilitar o upsert
+  // nativo do Prisma no repository (where: { titulo: ... }).
+  titulo       String   @unique @db.VarChar(500)
+
   precoUSD     Float
   precoBRL     Float
-  exchangeRate Float?   // ← adiciona essa linha
+  exchangeRate Float?
   imagem       String?  @db.VarChar(1000)
   url          String?  @db.VarChar(1000)
   rating       String?  @db.VarChar(50)

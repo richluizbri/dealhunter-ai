@@ -1,12 +1,30 @@
 // src/services/scrapingService.js
-const puppeteer = require("puppeteer");
-const { convertUSDtoBRL } = require("./currencyService");
+const puppeteer            = require("puppeteer");
+const { convertUSDtoBRL }  = require("./currencyService");
+
+// [CORREÇÃO] Usa o singleton de socket em vez de receber io como parâmetro.
+// Isso desacopla o service do controller e do scheduler.
+const { getIO } = require("../socket");
 
 const TARGET_URL = "https://fake-ecommerce-five.vercel.app/";
 
-async function scrapeProducts(io) {
-  // Notifica que o browser está abrindo
-  io?.emit("scraping:status", { step: "browser", message: "🌐 Abrindo navegador..." });
+// Helper interno: emite via socket e loga no servidor ao mesmo tempo.
+// O try/catch garante que uma falha no socket não quebre o scraping.
+function emit(event, payload) {
+  console.log(`[scraping] ${payload.message || event}`);
+  try {
+    getIO().emit(event, payload);
+  } catch (e) {
+    // Socket ainda não inicializado (ex: chamada direta em teste).
+    // Silencia o erro — o log acima já registrou a mensagem.
+    console.warn("[scraping] Socket indisponível, apenas log local.");
+  }
+}
+
+// [CORREÇÃO] Removido o parâmetro io da assinatura.
+// Quem chamava scrapeProducts(io) deve passar para scrapeProducts().
+async function scrapeProducts() {
+  emit("scraping:status", { step: "browser", message: "🌐 Abrindo navegador..." });
 
   const browser = await puppeteer.launch({
     headless: true,
@@ -18,76 +36,80 @@ async function scrapeProducts(io) {
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
   });
 
-  const page = await browser.newPage();
+  try {
+    const page = await browser.newPage();
 
-  await page.setUserAgent(
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
-  );
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
+    );
 
-  // Notifica que está navegando no site
-  io?.emit("scraping:status", { step: "navigating", message: "📡 Acessando o site alvo..." });
+    emit("scraping:status", { step: "navigating", message: "📡 Acessando o site alvo..." });
 
-  await page.goto(TARGET_URL, { waitUntil: "networkidle2", timeout: 30000 });
+    await page.goto(TARGET_URL, { waitUntil: "networkidle2", timeout: 30000 });
 
-  // Notifica que está extraindo os dados
-  io?.emit("scraping:status", { step: "extracting", message: "📦 Extraindo produtos..." });
+    emit("scraping:status", { step: "extracting", message: "📦 Extraindo produtos..." });
 
-  const rawProducts = await page.evaluate(() => {
-    const cards = document.querySelectorAll("article.product-card");
+    const rawProducts = await page.evaluate(() => {
+      const cards = document.querySelectorAll("article.product-card");
 
-    return Array.from(cards).map((card) => {
-      // Título
-      const title =
-        card.querySelector("[class*='title']")?.innerText?.trim() || "";
+      return Array.from(cards).map((card) => {
+        // Título
+        const title =
+          card.querySelector("[class*='title']")?.innerText?.trim() || "";
 
-      // Preço
-      const priceRaw =
-        card.querySelector("[class*='price']")?.innerText?.trim() || "0";
-      const priceUSD = parseFloat(priceRaw.replace(/[^0-9.]/g, "")) || 0;
+        // Preço
+        const priceRaw =
+          card.querySelector("[class*='price']")?.innerText?.trim() || "0";
+        const priceUSD = parseFloat(priceRaw.replace(/[^0-9.]/g, "")) || 0;
 
-      // Imagem
-      const image = card.querySelector("img")?.src || "";
+        // Imagem
+        const image = card.querySelector("img")?.src || "";
 
-      // URL absoluta
-      const url = card.querySelector("a")?.href || "";
+        // URL absoluta
+        const url = card.querySelector("a")?.href || "";
 
-      // Rating — valor + contagem
-      const ratingValue = card.querySelector(".rating-value")?.innerText?.trim() || "";
-      const ratingCount = card.querySelector(".rating-count")?.innerText?.trim() || "";
-      const rating = ratingValue ? `${ratingValue} ${ratingCount}`.trim() : null;
+        // Rating — valor + contagem
+        const ratingValue = card.querySelector(".rating-value")?.innerText?.trim() || "";
+        const ratingCount = card.querySelector(".rating-count")?.innerText?.trim() || "";
+        const rating = ratingValue ? `${ratingValue} ${ratingCount}`.trim() : null;
 
-      // 3.2 — Extrai textos das reviews se disponíveis
-      const reviewElements = card.querySelectorAll(".review-text, [class*='review']");
-      const reviewTexts = Array.from(reviewElements)
-        .map((el) => el.innerText?.trim())
-        .filter(Boolean);
+        // [3.2] Extrai textos das reviews disponíveis no card.
+        // Filtro de 10 chars elimina ruído (botões, labels de 1 palavra).
+        const reviewElements = card.querySelectorAll(".review-text, [class*='review']");
+        const reviewTexts = Array.from(reviewElements)
+          .map((el) => el.innerText?.trim())
+          .filter((text) => text && text.length >= 10);
 
-      return { title, priceUSD, image, url, rating, reviewTexts };
+        return { title, priceUSD, image, url, rating, reviewTexts };
+      });
     });
-  });
 
-  await browser.close();
+    // Filtra produtos inválidos
+    const validProducts = rawProducts.filter((p) => p.title && p.priceUSD > 0);
 
-  // Filtra produtos inválidos
-  const validProducts = rawProducts.filter((p) => p.title && p.priceUSD > 0);
+    emit("scraping:status", { step: "converting", message: "💱 Convertendo USD → BRL..." });
 
-  // Notifica que está convertendo os preços
-  io?.emit("scraping:status", { step: "converting", message: "💱 Convertendo USD → BRL..." });
+    // Converte sequencialmente com delay para não sobrecarregar a API
+    const productsWithBRL = [];
+    for (const product of validProducts) {
+      const { valueBRL, rate } = await convertUSDtoBRL(product.priceUSD);
+      productsWithBRL.push({
+        ...product,
+        precoBRL:     valueBRL,
+        precoUSD:     product.priceUSD,
+        exchangeRate: rate,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
 
-  // Converte sequencialmente com delay para não sobrecarregar a API
-  const productsWithBRL = [];
-  for (const product of validProducts) {
-    const { valueBRL, rate } = await convertUSDtoBRL(product.priceUSD);
-    productsWithBRL.push({
-      ...product,
-      precoBRL:     valueBRL,
-      precoUSD:     product.priceUSD,
-      exchangeRate: rate,
-    });
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    return productsWithBRL;
+
+  } finally {
+    // [CORREÇÃO] finally garante que o browser sempre fecha,
+    // mesmo se page.evaluate() ou convertUSDtoBRL() lançar erro.
+    await browser.close();
+    emit("scraping:status", { step: "done", message: "✅ Scraping concluído." });
   }
-
-  return productsWithBRL;
 }
 
 module.exports = { scrapeProducts };
