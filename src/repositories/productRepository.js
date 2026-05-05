@@ -1,29 +1,29 @@
-
 // src/repositories/productRepository.js
+const { PrismaClient } = require("@prisma/client");
 
-// [CORREÇÃO] Usa o singleton em vez de instanciar PrismaClient aqui.
-// Isso garante uma única conexão compartilhada em toda a aplicação.
-const prisma = require("../lib/prisma");
+const prisma = new PrismaClient();
 
-// Retorna produtos paginados com o último registro de histórico
+// Retorna produtos paginados com histórico e reviews
 async function findAllProducts({ page = 1, limit = 20 } = {}) {
   const skip  = (page - 1) * limit;
+  const total = await prisma.product.count();
 
-  // Executa count e findMany em paralelo — mais rápido que sequencial
-  const [total, products] = await Promise.all([
-    prisma.product.count(),
-    prisma.product.findMany({
-      skip,
-      take:    limit,
-      orderBy: { createdAt: "desc" },
-      include: {
-        history: {
-          orderBy: { createdAt: "desc" },
-          take: 2,
-        },
+  const products = await prisma.product.findMany({
+    skip,
+    take:    limit,
+    orderBy: { createdAt: "desc" },
+    include: {
+      history: {
+        orderBy: { createdAt: "desc" },
+        take: 2,
       },
-    }),
-  ]);
+      // Inclui as reviews mais recentes
+      reviews: {
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      },
+    },
+  });
 
   return {
     products,
@@ -33,7 +33,7 @@ async function findAllProducts({ page = 1, limit = 20 } = {}) {
   };
 }
 
-// Retorna um produto com histórico completo para o gráfico
+// Retorna um produto com histórico completo e reviews
 async function findProductById(id) {
   return prisma.product.findUnique({
     where: { id },
@@ -41,28 +41,36 @@ async function findProductById(id) {
       history: {
         orderBy: { createdAt: "asc" },
       },
+      // Inclui todas as reviews do produto
+      reviews: {
+        orderBy: { createdAt: "desc" },
+      },
     },
   });
 }
 
-// [CORREÇÃO] Usa o upsert nativo do Prisma.
-// Antes: findFirst + create/update manual (2 queries, não atômico).
-// Agora: upsert (1 query atômica, sem risco de race condition).
-// Só foi possível após adicionar @unique no campo titulo do schema.
+// Cria ou atualiza o produto pelo título
 async function upsertProduct(data) {
-  return prisma.product.upsert({
+  const existing = await prisma.product.findFirst({
     where: { titulo: data.titulo },
-    // update: campos que mudam a cada scraping
-    update: {
-      precoUSD:     data.precoUSD,
-      precoBRL:     data.precoBRL,
-      imagem:       data.imagem,
-      url:          data.url,
-      rating:       data.rating,
-      exchangeRate: data.exchangeRate,
-    },
-    // create: todos os campos, incluindo titulo (só na criação)
-    create: {
+  });
+
+  if (existing) {
+    return prisma.product.update({
+      where: { id: existing.id },
+      data: {
+        precoUSD:     data.precoUSD,
+        precoBRL:     data.precoBRL,
+        imagem:       data.imagem,
+        url:          data.url,
+        rating:       data.rating,
+        exchangeRate: data.exchangeRate,
+      },
+    });
+  }
+
+  return prisma.product.create({
+    data: {
       titulo:       data.titulo,
       precoUSD:     data.precoUSD,
       precoBRL:     data.precoBRL,
@@ -71,6 +79,25 @@ async function upsertProduct(data) {
       rating:       data.rating,
       exchangeRate: data.exchangeRate,
     },
+  });
+}
+
+// Salva os textos das reviews — apaga as antigas e insere as novas
+// Assim evitamos duplicatas a cada scraping
+async function upsertReviews(productId, reviewTexts) {
+  if (!reviewTexts || reviewTexts.length === 0) return;
+
+  // Remove reviews antigas do produto
+  await prisma.review.deleteMany({
+    where: { productId },
+  });
+
+  // Insere as novas reviews
+  await prisma.review.createMany({
+    data: reviewTexts.map((texto) => ({
+      productId,
+      texto,
+    })),
   });
 }
 
@@ -92,20 +119,18 @@ async function findHistoryByProductId(productId) {
   });
 }
 
-// Remove um produto e seu histórico (cascata manual — schema não tem onDelete)
+// Remove um produto e seu histórico e reviews
 async function deleteProduct(id) {
-  await prisma.priceHistory.deleteMany({
-    where: { productId: id },
-  });
-  return prisma.product.delete({
-    where: { id },
-  });
+  await prisma.review.deleteMany({ where: { productId: id } });
+  await prisma.priceHistory.deleteMany({ where: { productId: id } });
+  return prisma.product.delete({ where: { id } });
 }
 
 module.exports = {
   findAllProducts,
   findProductById,
   upsertProduct,
+  upsertReviews,
   createPriceHistory,
   findHistoryByProductId,
   deleteProduct,
