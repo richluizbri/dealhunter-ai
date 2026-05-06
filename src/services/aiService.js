@@ -1,13 +1,12 @@
-// src/services/aiService.js
 const { GoogleGenAI } = require("@google/genai");
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // Modelos em ordem de preferência — tenta o próximo se o atual falhar
 const MODELS = [
-  "gemini-2.0-flash",
   "gemini-1.5-flash",
   "gemini-1.5-flash-8b",
+  "gemma-3-27b-it",
 ];
 
 // Helper interno — tenta cada modelo até um funcionar
@@ -29,7 +28,6 @@ async function generateJSON(prompt) {
       console.error(`[aiService] Falha com modelo ${model}:`, error?.message);
       lastError = error;
 
-      // Se for erro de modelo não encontrado ou cota, tenta o próximo
       const isTryNextError =
         error?.status === 403 ||
         error?.status === 429 ||
