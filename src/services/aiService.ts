@@ -1,17 +1,39 @@
-const { GoogleGenAI } = require("@google/genai");
+// src/services/aiService.ts
+import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
-// Modelos em ordem de preferência — tenta o próximo se o atual falhar
 const MODELS = [
   "gemini-2.0-flash-lite",
   "gemini-2.0-flash",
   "gemma-4-26b-a4b-it",
 ];
 
-// Helper interno — tenta cada modelo até um funcionar
-async function generateJSON(prompt) {
-  let lastError;
+interface PricePoint {
+  data:  string;
+  preco: number;
+}
+
+interface PriceTrendResult {
+  summary:        string;
+  trend:          string;
+  recommendation: string;
+  insight:        string;
+}
+
+interface RatingResult {
+  sentiment:   string;
+  label:       string;
+  description: string;
+}
+
+interface HistoryItem {
+  preco:     number;
+  createdAt: Date | string;
+}
+
+async function generateJSON<T>(prompt: string): Promise<T> {
+  let lastError: Error | null = null;
 
   for (const model of MODELS) {
     try {
@@ -22,9 +44,9 @@ async function generateJSON(prompt) {
 
       const text  = response.text.trim();
       const clean = text.replace(/```json|```/g, "").trim();
-      return JSON.parse(clean);
+      return JSON.parse(clean) as T;
 
-    } catch (error) {
+    } catch (error: any) {
       console.error(`[aiService] Falha com modelo ${model}:`, error?.message);
       lastError = error;
 
@@ -45,8 +67,7 @@ async function generateJSON(prompt) {
   throw new Error("IA indisponível no momento. Tente novamente mais tarde.");
 }
 
-// Analisa tendência de preços
-async function analyzePriceTrend(titulo, history) {
+async function analyzePriceTrend(titulo: string, history: HistoryItem[]): Promise<PriceTrendResult> {
   if (!history || history.length < 2) {
     return {
       summary:        "Histórico insuficiente para análise.",
@@ -56,13 +77,14 @@ async function analyzePriceTrend(titulo, history) {
     };
   }
 
-  const priceData  = history.map((h) => ({
+  const priceData: PricePoint[] = history.map((h) => ({
     data:  new Date(h.createdAt).toLocaleDateString("pt-BR"),
     preco: h.preco,
   }));
+
   const firstPrice = priceData[0].preco;
   const lastPrice  = priceData[priceData.length - 1].preco;
-  const variation  = ((lastPrice - firstPrice) / firstPrice * 100).toFixed(2);
+  const variation  = (((lastPrice - firstPrice) / firstPrice) * 100).toFixed(2);
 
   const prompt = `
 Você é um analista de preços de e-commerce. Analise o histórico de preços abaixo.
@@ -81,11 +103,10 @@ Responda APENAS em JSON puro sem markdown:
   "insight": "insight sobre o comportamento do preço em 1 frase"
 }`;
 
-  return generateJSON(prompt);
+  return generateJSON<PriceTrendResult>(prompt);
 }
 
-// Analisa sentimento do rating e reviews
-async function analyzeRating(titulo, rating, reviewTexts = []) {
+async function analyzeRating(titulo: string, rating: string | null, reviewTexts: string[] = []): Promise<RatingResult> {
   if (!rating) {
     return {
       sentiment:   "neutral",
@@ -111,7 +132,7 @@ Responda APENAS em JSON puro sem markdown:
   "description": "descrição em 1 frase em português"
 }`;
 
-  return generateJSON(prompt);
+  return generateJSON<RatingResult>(prompt);
 }
 
-module.exports = { analyzePriceTrend, analyzeRating };
+export { analyzePriceTrend, analyzeRating };

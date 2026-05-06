@@ -1,13 +1,13 @@
-// src/services/scheduler.js
-const cron        = require("node-cron");
-const { runScraping } = require("./productService");
+// src/services/scheduler.ts
+import cron from "node-cron";
+import { runScraping } from "./productService";
 
-async function runScheduledScraping() {
+async function runScheduledScraping(): Promise<void> {
   console.log(`[Scheduler] Iniciando rodada: ${new Date().toISOString()}`);
   try {
     const result = await runScraping();
     console.log(`[Scheduler] Rodada concluída — ${result.products.length} produto(s) atualizados.`);
-  } catch (err) {
+  } catch (err: any) {
     console.error("[Scheduler] Erro durante scraping automático:", err.message);
   }
 }
@@ -20,4 +20,4 @@ cron.schedule(CRON_INTERVAL, () => {
 
 console.log(`[Scheduler] Agendador ativo. Intervalo: "${CRON_INTERVAL}"`);
 
-module.exports = { runScheduledScraping };
+export { runScheduledScraping };

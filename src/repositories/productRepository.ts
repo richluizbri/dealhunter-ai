@@ -1,7 +1,16 @@
-// src/repositories/productRepository.js
-const prisma = require("../lib/prisma");
+// src/repositories/productRepository.ts
+import prisma from "../lib/prisma";
 
-// Retorna produtos paginados com histórico e reviews
+interface ProductData {
+  titulo:       string;
+  precoUSD:     number;
+  precoBRL:     number;
+  imagem:       string | null;
+  url:          string | null;
+  rating:       string | null;
+  exchangeRate: number | null;
+}
+
 async function findAllProducts({ page = 1, limit = 20 } = {}) {
   const skip = (page - 1) * limit;
 
@@ -26,8 +35,7 @@ async function findAllProducts({ page = 1, limit = 20 } = {}) {
   };
 }
 
-// Retorna um produto com histórico completo e reviews
-async function findProductById(id) {
+async function findProductById(id: number) {
   return prisma.product.findUnique({
     where: { id },
     include: {
@@ -37,8 +45,7 @@ async function findProductById(id) {
   });
 }
 
-// Cria ou atualiza o produto pelo título
-async function upsertProduct(data) {
+async function upsertProduct(data: ProductData) {
   const existing = await prisma.product.findFirst({
     where: { titulo: data.titulo },
   });
@@ -70,40 +77,34 @@ async function upsertProduct(data) {
   });
 }
 
-// Salva textos das reviews — apaga antigas e insere novas
-async function upsertReviews(productId, reviewTexts) {
+async function upsertReviews(productId: number, reviewTexts: string[]) {
   if (!reviewTexts || reviewTexts.length === 0) return;
-
   await prisma.review.deleteMany({ where: { productId } });
-
   await prisma.review.createMany({
     data: reviewTexts.map((texto) => ({ productId, texto })),
   });
 }
 
-// Registra snapshot de preço em BRL
-async function createPriceHistory(productId, precoBRL) {
+async function createPriceHistory(productId: number, precoBRL: number) {
   return prisma.priceHistory.create({
     data: { productId, preco: precoBRL },
   });
 }
 
-// Retorna todo o histórico de um produto
-async function findHistoryByProductId(productId) {
+async function findHistoryByProductId(productId: number) {
   return prisma.priceHistory.findMany({
     where:   { productId },
     orderBy: { createdAt: "asc" },
   });
 }
 
-// Remove produto, histórico e reviews
-async function deleteProduct(id) {
+async function deleteProduct(id: number) {
   await prisma.review.deleteMany({ where: { productId: id } });
   await prisma.priceHistory.deleteMany({ where: { productId: id } });
   return prisma.product.delete({ where: { id } });
 }
 
-module.exports = {
+export {
   findAllProducts,
   findProductById,
   upsertProduct,

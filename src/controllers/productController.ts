@@ -1,20 +1,21 @@
-// src/controllers/productController.js
-const express = require("express");
-const router  = express.Router();
-const { z }   = require("zod");
-const {
+// src/controllers/productController.ts
+import { Router, Request, Response } from "express";
+import { z } from "zod";
+import {
   runScraping,
   scrapeProductById,
   addProductByUrl,
   getAllProducts,
   getProductById,
-} = require("../services/productService");
-const { analyzePriceTrend, analyzeRating } = require("../services/aiService");
-const {
+} from "../services/productService";
+import { analyzePriceTrend, analyzeRating } from "../services/aiService";
+import {
   findProductById,
   findHistoryByProductId,
   deleteProduct,
-} = require("../repositories/productRepository");
+} from "../repositories/productRepository";
+
+const router = Router();
 
 // ── Schemas de validação ──────────────────────────────────────────────────────
 
@@ -29,16 +30,16 @@ const urlSchema = z.object({
   url: z.string().url({ message: "URL inválida. Forneça uma URL completa com http:// ou https://" }),
 });
 
-// ── Helper para retornar erros de validação ───────────────────────────────────
+// ── Helper ────────────────────────────────────────────────────────────────────
 
-function validationError(res, error) {
-  const message = error.errors?.[0]?.message || "Dados inválidos.";
+function validationError(res: Response, error: z.ZodError): Response {
+  const message = error.issues?.[0]?.message || "Dados inválidos.";
   return res.status(400).json({ error: message });
 }
 
 // ── GET /api/products ─────────────────────────────────────────────────────────
 
-router.get("/", async (req, res) => {
+router.get("/", async (req: Request, res: Response) => {
   try {
     const parsed = paginationSchema.safeParse(req.query);
     if (!parsed.success) return validationError(res, parsed.error);
@@ -46,7 +47,7 @@ router.get("/", async (req, res) => {
     const { page, limit } = parsed.data;
     const data = await getAllProducts({ page, limit });
     return res.status(200).json(data);
-  } catch (error) {
+  } catch (error: any) {
     console.error("[GET /products]", error.message);
     return res.status(500).json({ error: "Erro ao buscar produtos." });
   }
@@ -54,14 +55,14 @@ router.get("/", async (req, res) => {
 
 // ── GET /api/products/:id ─────────────────────────────────────────────────────
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", async (req: Request, res: Response) => {
   try {
     const parsed = idSchema.safeParse(req.params.id);
     if (!parsed.success) return validationError(res, parsed.error);
 
     const data = await getProductById(parsed.data);
     return res.status(200).json(data);
-  } catch (error) {
+  } catch (error: any) {
     console.error("[GET /products/:id]", error.message);
     const status = error.message.includes("não encontrado") ? 404 : 500;
     return res.status(status).json({ error: error.message });
@@ -70,14 +71,14 @@ router.get("/:id", async (req, res) => {
 
 // ── POST /api/products ────────────────────────────────────────────────────────
 
-router.post("/", async (req, res) => {
+router.post("/", async (req: Request, res: Response) => {
   try {
     const parsed = urlSchema.safeParse(req.body);
     if (!parsed.success) return validationError(res, parsed.error);
 
     const product = await addProductByUrl(parsed.data.url);
     return res.status(201).json({ message: "Produto adicionado com sucesso!", product });
-  } catch (error) {
+  } catch (error: any) {
     console.error("[POST /products]", error.message);
     return res.status(500).json({ error: error.message });
   }
@@ -85,11 +86,11 @@ router.post("/", async (req, res) => {
 
 // ── POST /api/products/scrape ─────────────────────────────────────────────────
 
-router.post("/scrape", async (req, res) => {
+router.post("/scrape", async (req: Request, res: Response) => {
   try {
     const data = await runScraping();
     return res.status(200).json(data);
-  } catch (error) {
+  } catch (error: any) {
     console.error("[POST /products/scrape]", error.message);
     return res.status(500).json({ error: "Erro ao executar scraping." });
   }
@@ -97,14 +98,14 @@ router.post("/scrape", async (req, res) => {
 
 // ── POST /api/products/:id/scrape ─────────────────────────────────────────────
 
-router.post("/:id/scrape", async (req, res) => {
+router.post("/:id/scrape", async (req: Request, res: Response) => {
   try {
     const parsed = idSchema.safeParse(req.params.id);
     if (!parsed.success) return validationError(res, parsed.error);
 
     const data = await scrapeProductById(parsed.data);
     return res.status(200).json(data);
-  } catch (error) {
+  } catch (error: any) {
     console.error("[POST /products/:id/scrape]", error.message);
     const status = error.message.includes("não encontrado") ? 404 : 500;
     return res.status(status).json({ error: error.message });
@@ -113,7 +114,7 @@ router.post("/:id/scrape", async (req, res) => {
 
 // ── GET /api/products/:id/analyze ─────────────────────────────────────────────
 
-router.get("/:id/analyze", async (req, res) => {
+router.get("/:id/analyze", async (req: Request, res: Response) => {
   try {
     const parsed = idSchema.safeParse(req.params.id);
     if (!parsed.success) return validationError(res, parsed.error);
@@ -130,7 +131,7 @@ router.get("/:id/analyze", async (req, res) => {
     ]);
 
     return res.status(200).json({ priceAnalysis, ratingAnalysis });
-  } catch (error) {
+  } catch (error: any) {
     console.error("[GET /products/:id/analyze]", error.message);
     return res.status(500).json({ error: "Erro ao analisar produto." });
   }
@@ -138,18 +139,18 @@ router.get("/:id/analyze", async (req, res) => {
 
 // ── DELETE /api/products/:id ──────────────────────────────────────────────────
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", async (req: Request, res: Response) => {
   try {
     const parsed = idSchema.safeParse(req.params.id);
     if (!parsed.success) return validationError(res, parsed.error);
 
     await deleteProduct(parsed.data);
     return res.status(200).json({ message: "Produto removido com sucesso." });
-  } catch (error) {
+  } catch (error: any) {
     console.error("[DELETE /products/:id]", error.message);
     const status = error.message.includes("não encontrado") ? 404 : 500;
     return res.status(status).json({ error: error.message });
   }
 });
 
-module.exports = router;
+export default router;  

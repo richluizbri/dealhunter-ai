@@ -1,15 +1,14 @@
-// src/services/productService.js
-const { scrapeProducts, scrapeByUrl } = require("./scrapingService");
-const { convertUSDtoBRL } = require("./currencyService");
-const {
+// src/services/productService.ts
+import { scrapeProducts, scrapeByUrl } from "./scrapingService";
+import { convertUSDtoBRL }             from "./currencyService";
+import {
   findAllProducts,
   findProductById,
   upsertProduct,
   upsertReviews,
   createPriceHistory,
-} = require("../repositories/productRepository");
+} from "../repositories/productRepository";
 
-// Atualiza TODOS os produtos monitorados
 async function runScraping() {
   const scrapedProducts = await scrapeProducts();
 
@@ -39,19 +38,17 @@ async function runScraping() {
   );
 
   return {
-    message:  `${results.length} produto(s) atualizado(s) com sucesso.`,
+    message:  `${results.length} produto(s) processado(s) com sucesso.`,
     products: results,
   };
 }
 
-// Re-scraping de UM produto específico pelo ID
-async function scrapeProductById(id) {
+async function scrapeProductById(id: number) {
   const product = await findProductById(id);
   if (!product) throw new Error(`Produto com id ${id} não encontrado.`);
   if (!product.url) throw new Error("Este produto não tem URL cadastrada para re-scraping.");
 
   const data = await scrapeByUrl(product.url);
-
   const { valueBRL, rate } = await convertUSDtoBRL(data.priceUSD);
 
   const saved = await upsertProduct({
@@ -76,8 +73,7 @@ async function scrapeProductById(id) {
   };
 }
 
-// Adiciona produto manualmente por URL
-async function addProductByUrl(url) {
+async function addProductByUrl(url: string) {
   const data = await scrapeByUrl(url);
 
   if (!data.title || data.priceUSD <= 0) {
@@ -104,7 +100,6 @@ async function addProductByUrl(url) {
   return saved;
 }
 
-// Retorna todos os produtos com paginação
 async function getAllProducts({ page = 1, limit = 20 } = {}) {
   const data = await findAllProducts({ page, limit });
   return {
@@ -115,11 +110,10 @@ async function getAllProducts({ page = 1, limit = 20 } = {}) {
   };
 }
 
-// Retorna um produto com histórico completo
-async function getProductById(id) {
-  const product = await findProductById(Number(id));
+async function getProductById(id: number) {
+  const product = await findProductById(id);
   if (!product) throw new Error(`Produto com id ${id} não encontrado.`);
   return { product };
 }
 
-module.exports = { runScraping, scrapeProductById, addProductByUrl, getAllProducts, getProductById };
+export { runScraping, scrapeProductById, addProductByUrl, getAllProducts, getProductById };
