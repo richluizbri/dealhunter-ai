@@ -22,6 +22,7 @@
     "node-cron": "^4.2.1",
     "prisma": "^5.22.0",
     "puppeteer": "^24.40.0",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "zod": "^4.4.3"
   }
 }
