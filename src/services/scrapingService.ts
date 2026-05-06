@@ -15,8 +15,8 @@ interface RawProduct {
 }
 
 interface ProcessedProduct extends RawProduct {
-  precoBRL:    number;
-  precoUSD:    number;
+  precoBRL:     number;
+  precoUSD:     number;
   exchangeRate: number;
 }
 
@@ -46,6 +46,29 @@ async function openBrowser() {
   return { browser, page };
 }
 
+function isValidReview(text: string): boolean {
+  return (
+    text.length >= 20 &&
+    text.length <= 500 &&
+    !text.toLowerCase().includes("write a review") &&
+    !text.toLowerCase().includes("verified purchase") &&
+    !text.toLowerCase().includes("customer reviews") &&
+    !text.toLowerCase().includes("submit review") &&
+    !text.toLowerCase().includes("rating") &&
+    !text.toLowerCase().includes("name *") &&
+    !text.toLowerCase().includes("review *") &&
+    !/^\d+$/.test(text) &&
+    !/^\d+\/\d+$/.test(text) &&
+    !/^\d{4}-\d{2}-\d{2}$/.test(text) &&
+    !/^[\d.]+★/.test(text) &&
+    !/★/.test(text) &&
+    !/\(\d+ reviews?\)/.test(text) &&
+    !/^[A-Z][a-z]+ [A-Z]\.\s*★/.test(text) &&
+    !/^\d+\/500$/.test(text) &&
+    !/^clear$/i.test(text)
+  );
+}
+
 async function scrapeProducts(): Promise<ProcessedProduct[]> {
   emit("scraping:status", { step: "browser",     message: "🌐 Abrindo navegador..." });
 
@@ -71,13 +94,28 @@ async function scrapeProducts(): Promise<ProcessedProduct[]> {
         const reviewElements = card.querySelectorAll(".review-text, [class*='review']");
         const reviewTexts = Array.from(reviewElements)
           .map((el) => el.textContent?.trim() || "")
-        .filter((text) =>
-        text.length >= 15 &&
-        !text.toLowerCase().includes("write a review") &&
-        !text.toLowerCase().includes("verified purchase") &&
-        !/^\d+$/.test(text) &&
-        !/^\d+\/\d+$/.test(text)
-      );
+          .filter((text) => {
+            return (
+              text.length >= 20 &&
+              text.length <= 500 &&
+              !text.toLowerCase().includes("write a review") &&
+              !text.toLowerCase().includes("verified purchase") &&
+              !text.toLowerCase().includes("customer reviews") &&
+              !text.toLowerCase().includes("submit review") &&
+              !text.toLowerCase().includes("rating") &&
+              !text.toLowerCase().includes("name *") &&
+              !text.toLowerCase().includes("review *") &&
+              !/^\d+$/.test(text) &&
+              !/^\d+\/\d+$/.test(text) &&
+              !/^\d{4}-\d{2}-\d{2}$/.test(text) &&
+              !/^[\d.]+★/.test(text) &&
+              !/★/.test(text) &&
+              !/\(\d+ reviews?\)/.test(text) &&
+              !/^[A-Z][a-z]+ [A-Z]\.\s*★/.test(text) &&
+              !/^\d+\/500$/.test(text) &&
+              !/^clear$/i.test(text)
+            );
+          });
         return { title, priceUSD, image, url, rating, reviewTexts };
       });
     });
@@ -128,7 +166,28 @@ async function scrapeByUrl(url: string): Promise<RawProduct> {
       const reviewElements = document.querySelectorAll(".review-text, [class*='review']");
       const reviewTexts = Array.from(reviewElements)
         .map((el) => el.textContent?.trim() || "")
-        .filter((text) => text.length >= 10);
+        .filter((text) => {
+          return (
+            text.length >= 20 &&
+            text.length <= 500 &&
+            !text.toLowerCase().includes("write a review") &&
+            !text.toLowerCase().includes("verified purchase") &&
+            !text.toLowerCase().includes("customer reviews") &&
+            !text.toLowerCase().includes("submit review") &&
+            !text.toLowerCase().includes("rating") &&
+            !text.toLowerCase().includes("name *") &&
+            !text.toLowerCase().includes("review *") &&
+            !/^\d+$/.test(text) &&
+            !/^\d+\/\d+$/.test(text) &&
+            !/^\d{4}-\d{2}-\d{2}$/.test(text) &&
+            !/^[\d.]+★/.test(text) &&
+            !/★/.test(text) &&
+            !/\(\d+ reviews?\)/.test(text) &&
+            !/^[A-Z][a-z]+ [A-Z]\.\s*★/.test(text) &&
+            !/^\d+\/500$/.test(text) &&
+            !/^clear$/i.test(text)
+          );
+        });
       return { title, priceUSD, image, url: window.location.href, rating, reviewTexts };
     });
 
