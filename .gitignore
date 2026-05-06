@@ -1,1 +1,30 @@
+# Dependências
+node_modules/
+
+# Ambiente
 .env
+.env.local
+.env.production
+
+# Build
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+
+# Prisma
+prisma/migrations/
+
+# Temporários
+*.tmp
+fix.js
+deploy.txt
