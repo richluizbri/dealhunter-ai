@@ -54,7 +54,11 @@ async function scrapeProducts() {
                 const reviewElements = card.querySelectorAll(".review-text, [class*='review']");
                 const reviewTexts = Array.from(reviewElements)
                     .map((el) => el.textContent?.trim() || "")
-                    .filter((text) => text.length >= 10);
+                    .filter((text) => text.length >= 15 &&
+                    !text.toLowerCase().includes("write a review") &&
+                    !text.toLowerCase().includes("verified purchase") &&
+                    !/^\d+$/.test(text) &&
+                    !/^\d+\/\d+$/.test(text));
                 return { title, priceUSD, image, url, rating, reviewTexts };
             });
         });
