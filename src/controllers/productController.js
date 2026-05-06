@@ -1,6 +1,7 @@
 // src/controllers/productController.js
 const express = require("express");
 const router  = express.Router();
+const { z }   = require("zod");
 const {
   runScraping,
   scrapeProductById,
@@ -15,12 +16,35 @@ const {
   deleteProduct,
 } = require("../repositories/productRepository");
 
-// GET /api/products — lista paginada
+// ── Schemas de validação ──────────────────────────────────────────────────────
+
+const idSchema = z.coerce.number().int().positive({ message: "ID deve ser um número inteiro positivo." });
+
+const paginationSchema = z.object({
+  page:  z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+const urlSchema = z.object({
+  url: z.string().url({ message: "URL inválida. Forneça uma URL completa com http:// ou https://" }),
+});
+
+// ── Helper para retornar erros de validação ───────────────────────────────────
+
+function validationError(res, error) {
+  const message = error.errors?.[0]?.message || "Dados inválidos.";
+  return res.status(400).json({ error: message });
+}
+
+// ── GET /api/products ─────────────────────────────────────────────────────────
+
 router.get("/", async (req, res) => {
   try {
-    const page  = parseInt(req.query.page)  || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const data  = await getAllProducts({ page, limit });
+    const parsed = paginationSchema.safeParse(req.query);
+    if (!parsed.success) return validationError(res, parsed.error);
+
+    const { page, limit } = parsed.data;
+    const data = await getAllProducts({ page, limit });
     return res.status(200).json(data);
   } catch (error) {
     console.error("[GET /products]", error.message);
@@ -28,12 +52,14 @@ router.get("/", async (req, res) => {
   }
 });
 
-// GET /api/products/:id — detalhes de um produto
+// ── GET /api/products/:id ─────────────────────────────────────────────────────
+
 router.get("/:id", async (req, res) => {
   try {
-    const id = Number(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "ID inválido." });
-    const data = await getProductById(id);
+    const parsed = idSchema.safeParse(req.params.id);
+    if (!parsed.success) return validationError(res, parsed.error);
+
+    const data = await getProductById(parsed.data);
     return res.status(200).json(data);
   } catch (error) {
     console.error("[GET /products/:id]", error.message);
@@ -42,20 +68,14 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// POST /api/products — adiciona produto por URL
+// ── POST /api/products ────────────────────────────────────────────────────────
+
 router.post("/", async (req, res) => {
   try {
-    const { url } = req.body;
+    const parsed = urlSchema.safeParse(req.body);
+    if (!parsed.success) return validationError(res, parsed.error);
 
-    if (!url || typeof url !== "string") {
-      return res.status(400).json({ error: "Informe uma URL válida no body: { url: '...' }" });
-    }
-
-    try { new URL(url); } catch {
-      return res.status(400).json({ error: "URL inválida. Forneça uma URL completa com http:// ou https://" });
-    }
-
-    const product = await addProductByUrl(url);
+    const product = await addProductByUrl(parsed.data.url);
     return res.status(201).json({ message: "Produto adicionado com sucesso!", product });
   } catch (error) {
     console.error("[POST /products]", error.message);
@@ -63,7 +83,8 @@ router.post("/", async (req, res) => {
   }
 });
 
-// POST /api/products/scrape — atualiza TODOS os produtos monitorados
+// ── POST /api/products/scrape ─────────────────────────────────────────────────
+
 router.post("/scrape", async (req, res) => {
   try {
     const data = await runScraping();
@@ -74,13 +95,14 @@ router.post("/scrape", async (req, res) => {
   }
 });
 
-// POST /api/products/:id/scrape — re-scraping de UM produto específico
+// ── POST /api/products/:id/scrape ─────────────────────────────────────────────
+
 router.post("/:id/scrape", async (req, res) => {
   try {
-    const id = Number(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "ID inválido." });
+    const parsed = idSchema.safeParse(req.params.id);
+    if (!parsed.success) return validationError(res, parsed.error);
 
-    const data = await scrapeProductById(id);
+    const data = await scrapeProductById(parsed.data);
     return res.status(200).json(data);
   } catch (error) {
     console.error("[POST /products/:id/scrape]", error.message);
@@ -89,22 +111,22 @@ router.post("/:id/scrape", async (req, res) => {
   }
 });
 
-// GET /api/products/:id/analyze — análise de IA
+// ── GET /api/products/:id/analyze ─────────────────────────────────────────────
+
 router.get("/:id/analyze", async (req, res) => {
   try {
-    const id = Number(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "ID inválido." });
+    const parsed = idSchema.safeParse(req.params.id);
+    if (!parsed.success) return validationError(res, parsed.error);
 
-    const product = await findProductById(id);
+    const product = await findProductById(parsed.data);
     if (!product) return res.status(404).json({ error: "Produto não encontrado." });
 
-    const history = await findHistoryByProductId(id);
-
+    const history     = await findHistoryByProductId(parsed.data);
     const reviewTexts = (product.reviews || []).map((r) => r.texto);
 
     const [priceAnalysis, ratingAnalysis] = await Promise.all([
       analyzePriceTrend(product.titulo, history),
-      analyzeRating(product.titulo, product.rating, reviewTexts)
+      analyzeRating(product.titulo, product.rating, reviewTexts),
     ]);
 
     return res.status(200).json({ priceAnalysis, ratingAnalysis });
@@ -114,12 +136,14 @@ router.get("/:id/analyze", async (req, res) => {
   }
 });
 
-// DELETE /api/products/:id — remove produto
+// ── DELETE /api/products/:id ──────────────────────────────────────────────────
+
 router.delete("/:id", async (req, res) => {
   try {
-    const id = Number(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "ID inválido." });
-    await deleteProduct(id);
+    const parsed = idSchema.safeParse(req.params.id);
+    if (!parsed.success) return validationError(res, parsed.error);
+
+    await deleteProduct(parsed.data);
     return res.status(200).json({ message: "Produto removido com sucesso." });
   } catch (error) {
     console.error("[DELETE /products/:id]", error.message);
