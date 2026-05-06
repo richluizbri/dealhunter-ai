@@ -91,3 +91,14 @@ src/
 prisma/
   schema.prisma    # Modelos do banco
 ```
+##  Docker / Deploy
+
+O `Dockerfile` empacota a aplicação com Chromium para deploy no Railway.
+**Não é necessário Docker para desenvolvimento local.**
+
+Para rodar localmente:
+```bash
+npm run dev
+```
+
+Para deploy no Railway, o Dockerfile é usado automaticamente pelo CI/CD.
