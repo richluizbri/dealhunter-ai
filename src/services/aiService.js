@@ -4,9 +4,9 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // Modelos em ordem de preferência — tenta o próximo se o atual falhar
 const MODELS = [
-  "gemini-1.5-flash",
-  "gemini-1.5-flash-8b",
-  "gemma-3-27b-it",
+  "gemini-2.0-flash-lite",
+  "gemini-2.0-flash",
+  "gemma-4-26b-a4b-it",
 ];
 
 // Helper interno — tenta cada modelo até um funcionar
